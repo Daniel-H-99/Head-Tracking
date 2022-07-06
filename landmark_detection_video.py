@@ -8,7 +8,7 @@ import os
 
 import helpers
 import head_move_box
-
+import face_alignment
 
 def dist(arr):
     # compute distance
@@ -23,14 +23,14 @@ def tracking(resource, target):
     # nameOfMovPT = ["(6)RightJaw (mm)", "(12)LeftJaw", "(57)LowerLip"]
     nameOfMovPT = ["Left Brow", "Right Eye", "Lower Lip"]
     #nameOfMovPT = ["Euclidean (mm)", "Horizontal", "Vertical"]
-    my_figsize, my_dpi = (20, 10), 80
+    my_figsize, my_dpi = (10, 10), 370
     Z_cam = 500 #(millimeter)
     sizeOfLdmk = [68,2]
     desiredEyePixels = 180 #(180 pixel = 6cm, => 1 pixel = 0.4 mms)
     eyeDistGT = 63.0 # The distance between middle of eyes is 60mm
     pix2mm = eyeDistGT/desiredEyePixels
 
-    svVideo = os.path.join(target, 'output.avi') # create output video file
+    svVideo = os.path.join(target, 'output.mp4') # create output video file
     sv2DLdMarks = os.path.join(target, '2d_landmarks') # create 2D landmarks file
     sv3DLdMarks = os.path.join(target, '3d_landmarks') # create 3D frontalised landmarks file
     sv3DLdMarks_Pose = os.path.join(target, '3d_landmarks_pose') # create 3D landmarks coupled with pose file
@@ -50,11 +50,15 @@ def tracking(resource, target):
     print("Total frames: ", totalFrame)
     print("Frame size: ", size)
     vis = 0
-    fourcc = cv2.VideoWriter_fourcc(*'XVID') # create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v') # create VideoWriter object
+    # width, height = 256, 256
     width, height = my_figsize[0] * my_dpi, my_figsize[1] * my_dpi
     out = cv2.VideoWriter(svVideo, fourcc, fps, (width, height))
     flagIndx = False
     totalIndx = 0
+    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=False, device='cuda')
+
+    d = 0
     while(cap.isOpened()):
         frameIndex = np.int32(cap.get(cv2.CAP_PROP_POS_FRAMES))
         print("Processing frame ", frameIndex, "...")
@@ -64,7 +68,11 @@ def tracking(resource, target):
             # operations on the frame
             try:
                 # generate face bounding box and track 2D landmarks for current frame
-                (bb, frame_landmarks) = helpers.get_landmarks(frame)
+                (bb, frame_landmarks) = helpers.get_landmarks_fa(frame)
+                # H, W = frame.shape[0:2]
+                # bb = (0, 0, H - 1, W - 1)
+                # frame_landmarks = fa.get_landmarks(frame)[0].astype(int)
+                # frame_landmarks = np.stack([frame_landmarks[:, 0].clip(0, H - 1), frame_landmarks[:, 1].clip(0, W - 1)], axis=1)
             except:
                 print("Landmarks in frame ", frameIndex, " (", frameIndex/fps, " s) could not be detected.")
                 nonDetectFr.append(frameIndex/fps)
@@ -75,7 +83,16 @@ def tracking(resource, target):
 
             # 3D transformation by adding depth to the 2D image
             (vertices, mesh_plotting, Ind, rotation_angle) = helpers.landmarks_3d_fitting(frame_landmarks,height,width)
-            frame_landmarks_3d = vertices[np.int32(Ind),0:2]
+            # print(f'Ind: {Ind}')
+            d += (frame_landmarks[:, None] - height // 2 - mesh_plotting[None, :, :2]) # N x M x 2
+
+            # frame_landmarks_3d = mesh_plotting[np.int32(Ind),0:2]
+
+            # frame_landmarks = frame_landmarks_3d[:, :2].astype(int) + np.array([[height // 2, width // 2]])
+
+            normed_mesh, a = helpers.normalize_mesh(frame_landmarks, height, width)
+
+            frame_landmarks_3d = normed_mesh
 
             landmarks_2d.append(frame_landmarks)
             landmarks_3d.append(vertices[np.int32(Ind),0:3])
@@ -138,6 +155,7 @@ def tracking(resource, target):
         ax2.set_ylabel('Pixel', fontsize=14)
         ax2.axis([-100, 100, -100, 100])
         # landmarkCompare = 0 * im1.copy() + 255
+        # frame_landmarks_ed = mesh_
         for (x, y) in frame_landmarks_3d[:, 0:2]:
             x = np.int32(x)
             y = np.int32(y)
@@ -210,10 +228,14 @@ def tracking(resource, target):
     out.release()
 
     end = time.time()
+
+    d = (d ** 2).sum(axis=-1)
+    mapping = np.argmin(d, axis=-1)
+    print(f'mapping: ,{",".join(mapping.astype(str).tolist())}')
     print("processing time:" + str(end - start))
 
 if __name__ == "__main__":
-    path = "./videos"
+    path = "/root/workspace/Experiment/data/demo/drv"
     for file in os.listdir(path):
         filepath = os.path.join(path, file)
         print(filepath)

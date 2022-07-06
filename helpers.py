@@ -6,6 +6,7 @@ import eos
 from scipy.signal import butter, lfilter
 from scipy.signal import find_peaks, peak_widths
 import matplotlib.pyplot as plt
+import face_alignment
 
 # define a dictionary that maps the indexes of the facial
 # landmarks to specific face regions
@@ -30,6 +31,8 @@ edge_topology = eos.morphablemodel.load_edge_topology('./share/sfm_3448_edge_top
 contour_landmarks = eos.fitting.ContourLandmarks.load('./share/ibug_to_sfm.txt')
 model_contour = eos.fitting.ModelContour.load('./share/sfm_model_contours.json')
 landmark_ids = list(map(str, range(1, 69))) # generates the numbers 1 to 68, as strings
+
+fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D, flip_input=False, device='cuda')
 
 def rect_to_bb(rect):
     # take a bounding predicted by dlib and convert it
@@ -68,6 +71,12 @@ def get_landmarks(im):
         bb = rect_to_bb(d)
         return (bb, corrds)
 
+def get_landmarks_fa(frame):
+        H, W = frame.shape[0:2]
+        bb = (0, 0, H - 1, W - 1)
+        frame_landmarks = fa.get_landmarks(frame)[0].astype(int)
+        frame_landmarks = np.stack([frame_landmarks[:, 0].clip(0, H - 1), frame_landmarks[:, 1].clip(0, W - 1)], axis=1)
+        return (bb, frame_landmarks)
 
 def visualize_facial_landmarks(image, bb, shape, background=1, highlightPt=[]):
     # background==1: show video background (0 means showing only landmarks, no background)
@@ -129,6 +138,8 @@ def get_fixedPoint(shape, numOfPoint = 3):
 
 def landmarks_3d_fitting(landmarks,image_height, image_width):
     eos_landmarks = []
+    # print(f'landmarks: {landmarks}')
+    # print(f'image size: {image_height}, {image_width}')
     for idx in range(0,68):
         eos_landmarks.append(eos.core.Landmark(str(idx+1), [float(landmarks[idx,0]), float(landmarks[idx,1])]))
     (mesh, pose, shape_coeffs, blendshape_coeffs) = eos.fitting.fit_shape_and_pose(morphablemodel_with_expressions,
@@ -143,17 +154,98 @@ def landmarks_3d_fitting(landmarks,image_height, image_width):
                         [0, 0, 0.5, 0.5],
                         [0, 0, 0, 1]])
     a = multiplyABC(viewport, pose.get_projection() ,pose.get_modelview())
+
+    # print(f'a shape: {a}')
+    # print(f'proj: {pose.get_projection()}')
+    # print(f'view: {pose.get_modelview()}')
+
     a = a.transpose()
     mesh_3d_points = np.dot(vertices, a)
 
+    # print(f'vertices: {vertices}')
+    # print()
     # landmark index in mesh
-    Ind = np.zeros((68,))
-    for (i, (x, y)) in enumerate(landmarks):
-        Ind[i] = np.argmin((np.square(x - mesh_3d_points[:, 0]) + np.square(y - mesh_3d_points[:,1])))
+    # Ind = np.zeros((68,))
+    Ind = np.array([2127, 2508, 2076, 2257, 2083, 1767,  945, 2505,   33, 2237,  946,
+       1773, 1886,  900, 1890, 1749,  776,  225,  229,  233, 2086,  157,
+        590, 2091,  666,  662,  658, 2842,  379,  272,  114,  100, 2794,
+        270, 2797,  537,  177,  172,  191,  181,  173,  174,  614,  624,
+        605,  610,  607,  606,  398,  315,  413,  329,  825,  736,  812,
+        841,  693,  411,  264,  431, 3253,  416,  423,  828,  821,  817,
+        442,  404]).astype(int)
+    # ibug2sfm = {'45': '605', '30': '272', '44': '624', '39': '191', '57': '693', '38': '172', '53': '825', '43': '614', '63': '423', '36': '537', '35': '2797', '27': '658', '34': '270', '33': '2794', '31': '114', '55': '812', '42': '174', '49': '398', '41': '173', '28': '2842', '18': '225', '46': '610', '48': '606', '52': '329', '59': '264', '60': '431', '51': '413', '50': '315', '54': '736', '62': '416', '47': '607', '58': '411', '64': '828', '68': '404', '56': '841', '29': '379', '40': '181', '25': '666', '22': '157', '9': '33', '67': '442', '24': '2091', '23': '590', '21': '2086', '20': '233', '32': '100', '26': '662', '37': '177', '66': '817', '19': '229'}
+    
+    # for (i, (x, y)) in enumerate(landmarks):
+    #     # k = str(i + 1)
+    #     # if k in ibug2sfm:
+    #     #     Ind[i] = int(ibug2sfm[k])
+    #     #     print(f'{i}-th found in dictionary: ')
+    #     #     continue
+    #     d = (np.square(x - w2 - mesh_3d_points[:, 0]) + np.square(y - h2 - mesh_3d_points[:,1]))
+    #     # print(f'd shape, value: {d.shape}, {d}')
+    #     Ind[i] = np.argmin(d)
+    #     print(f'found id with d = {d[int(Ind[i])]}')
     rotation_angle = pose.get_rotation_euler_angles()
     return (vertices, mesh_3d_points, Ind, rotation_angle)
 
+def normalize_mesh(landmarks, image_height, image_width):
+    eos_landmarks = []
+    # print(f'landmarks: {landmarks}')
+    # print(f'image size: {image_height}, {image_width}')
+    for idx in range(0,68):
+        eos_landmarks.append(eos.core.Landmark(str(idx+1), [float(landmarks[idx,0]), float(landmarks[idx,1])]))
+    (mesh, pose, shape_coeffs, blendshape_coeffs) = eos.fitting.fit_shape_and_pose(morphablemodel_with_expressions,
+        eos_landmarks, landmark_mapper, image_width, image_height, edge_topology, contour_landmarks, model_contour)
 
+    vertices = np.array(mesh.vertices)
+    vertices = np.append(vertices, np.ones((vertices.shape[0], 1)), 1)
+
+    w2, h2 = image_width/2, image_height/2
+    viewport = np.array([[w2, 0, 0, w2],
+                        [0, h2*(-1), 0, h2],
+                        [0, 0, 0.5, 0.5],
+                        [0, 0, 0, 1]])
+    a = multiplyABC(viewport, pose.get_projection() ,pose.get_modelview())
+
+    # print(f'a shape: {a}')
+    # print(f'proj: {pose.get_projection()}')
+    # print(f'view: {pose.get_modelview()}')
+
+    a = a.transpose()
+    mesh_3d_points = np.dot(vertices, a)
+
+    # print(f'vertices: {vertices}')
+    # print()
+    # landmark index in mesh
+    # Ind = np.zeros((68,))
+    Ind = np.array([2127, 2508, 2076, 2257, 2083, 1767,  945, 2505,   33, 2237,  946,
+       1773, 1886,  900, 1890, 1749,  776,  225,  229,  233, 2086,  157,
+        590, 2091,  666,  662,  658, 2842,  379,  272,  114,  100, 2794,
+        270, 2797,  537,  177,  172,  191,  181,  173,  174,  614,  624,
+        605,  610,  607,  606,  398,  315,  413,  329,  825,  736,  812,
+        841,  693,  411,  264,  431, 3253,  416,  423,  828,  821,  817,
+        442,  404]).astype(int)
+    # ibug2sfm = {'45': '605', '30': '272', '44': '624', '39': '191', '57': '693', '38': '172', '53': '825', '43': '614', '63': '423', '36': '537', '35': '2797', '27': '658', '34': '270', '33': '2794', '31': '114', '55': '812', '42': '174', '49': '398', '41': '173', '28': '2842', '18': '225', '46': '610', '48': '606', '52': '329', '59': '264', '60': '431', '51': '413', '50': '315', '54': '736', '62': '416', '47': '607', '58': '411', '64': '828', '68': '404', '56': '841', '29': '379', '40': '181', '25': '666', '22': '157', '9': '33', '67': '442', '24': '2091', '23': '590', '21': '2086', '20': '233', '32': '100', '26': '662', '37': '177', '66': '817', '19': '229'}
+    
+    # for (i, (x, y)) in enumerate(landmarks):
+    #     # k = str(i + 1)
+    #     # if k in ibug2sfm:
+    #     #     Ind[i] = int(ibug2sfm[k])
+    #     #     print(f'{i}-th found in dictionary: ')
+    #     #     continue
+    #     d = (np.square(x - w2 - mesh_3d_points[:, 0]) + np.square(y - h2 - mesh_3d_points[:,1]))
+    #     # print(f'd shape, value: {d.shape}, {d}')
+    #     Ind[i] = np.argmin(d)
+    #     print(f'found id with d = {d[int(Ind[i])]}')
+    rotation_angle = pose.get_rotation_euler_angles()
+
+    landmarks_3d = np.concatenate([landmarks - np.array([[w2, h2]]), mesh_3d_points[Ind, 2:]], axis=1)
+    normalized_landmarks_3d = landmarks_3d @ np.linalg.inv(a)
+    # normalized_landmarks_3d = normalized_landmarks_3d[:, :3]
+
+    return normalized_landmarks_3d, a
+    
+    
 def multiplyABC(A, B, C):
     temp = np.dot(A, B)
     return np.dot(temp, C)
