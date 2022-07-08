@@ -1,4 +1,4 @@
-import dlib
+# import dlib
 import numpy as np
 from collections import OrderedDict
 import cv2
@@ -186,6 +186,7 @@ def landmarks_3d_fitting(landmarks,image_height, image_width):
     #     Ind[i] = np.argmin(d)
     #     print(f'found id with d = {d[int(Ind[i])]}')
     rotation_angle = pose.get_rotation_euler_angles()
+    print(f'mesh: {mesh_3d_points}')
     return (vertices, mesh_3d_points, Ind, rotation_angle)
 
 def normalize_mesh(landmarks, image_height, image_width):
@@ -205,7 +206,9 @@ def normalize_mesh(landmarks, image_height, image_width):
                         [0, h2*(-1), 0, h2],
                         [0, 0, 0.5, 0.5],
                         [0, 0, 0, 1]])
-    a = multiplyABC(viewport, pose.get_projection() ,pose.get_modelview())
+    proj = pose.get_projection()
+    view = pose.get_modelview()
+    a = multiplyABC(viewport, proj, view)
 
     # print(f'a shape: {a}')
     # print(f'proj: {pose.get_projection()}')
@@ -226,7 +229,7 @@ def normalize_mesh(landmarks, image_height, image_width):
         841,  693,  411,  264,  431, 3253,  416,  423,  828,  821,  817,
         442,  404]).astype(int)
     # ibug2sfm = {'45': '605', '30': '272', '44': '624', '39': '191', '57': '693', '38': '172', '53': '825', '43': '614', '63': '423', '36': '537', '35': '2797', '27': '658', '34': '270', '33': '2794', '31': '114', '55': '812', '42': '174', '49': '398', '41': '173', '28': '2842', '18': '225', '46': '610', '48': '606', '52': '329', '59': '264', '60': '431', '51': '413', '50': '315', '54': '736', '62': '416', '47': '607', '58': '411', '64': '828', '68': '404', '56': '841', '29': '379', '40': '181', '25': '666', '22': '157', '9': '33', '67': '442', '24': '2091', '23': '590', '21': '2086', '20': '233', '32': '100', '26': '662', '37': '177', '66': '817', '19': '229'}
-    
+    # Ind = 
     # for (i, (x, y)) in enumerate(landmarks):
     #     # k = str(i + 1)
     #     # if k in ibug2sfm:
@@ -240,10 +243,14 @@ def normalize_mesh(landmarks, image_height, image_width):
     rotation_angle = pose.get_rotation_euler_angles()
 
     landmarks_3d = np.concatenate([landmarks - np.array([[w2, h2]]), mesh_3d_points[Ind, 2:]], axis=1)
-    normalized_landmarks_3d = landmarks_3d @ np.linalg.inv(a)
+    print(f'view port: {viewport}')
+    print(f'projection: {proj}')
+    print(f'view: {view}')
+    normalized_landmarks_3d = (((landmarks_3d @ np.linalg.inv(viewport.T))[:, :3] + np.array([[1, 1, 0]])) @ np.linalg.inv(proj[:3, :3].T) - np.ones((1, 3)) * view[:3, -1:].T) @ np.linalg.inv(view.T[:3, :3])
+    print(f'normed mesh: {mesh_3d_points}')
     # normalized_landmarks_3d = normalized_landmarks_3d[:, :3]
 
-    return normalized_landmarks_3d, a
+    return normalized_landmarks_3d, a, Ind
     
     
 def multiplyABC(A, B, C):

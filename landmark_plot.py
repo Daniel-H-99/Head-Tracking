@@ -12,7 +12,7 @@ import face_alignment
 ######################################################
 
 frame_size = 256
-landmark_path = '../face_tracking/output_landmark/fit_landmarks.npy'
+landmark_path = '../flame-fitting/output_landmark/fit_landmarks.npy'
 landmark = np.load(landmark_path) * 1000
 
 
