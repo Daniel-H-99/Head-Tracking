@@ -203,7 +203,7 @@ def normalize_mesh(landmarks, image_height, image_width):
 
     w2, h2 = image_width/2, image_height/2
     viewport = np.array([[w2, 0, 0, w2],
-                        [0, h2*(-1), 0, h2],
+                        [0, h2, 0, h2],
                         [0, 0, 0.5, 0.5],
                         [0, 0, 0, 1]])
     proj = pose.get_projection()
@@ -211,8 +211,8 @@ def normalize_mesh(landmarks, image_height, image_width):
     a = multiplyABC(viewport, proj, view)
 
     # print(f'a shape: {a}')
-    # print(f'proj: {pose.get_projection()}')
-    # print(f'view: {pose.get_modelview()}')
+    print(f'proj: {pose.get_projection()}')
+    print(f'view: {pose.get_modelview()}')
 
     a = a.transpose()
     mesh_3d_points = np.dot(vertices, a)
@@ -247,7 +247,8 @@ def normalize_mesh(landmarks, image_height, image_width):
     print(f'projection: {proj}')
     print(f'view: {view}')
     normalized_landmarks_3d = (((landmarks_3d @ np.linalg.inv(viewport.T))[:, :3] + np.array([[1, 1, 0]])) @ np.linalg.inv(proj[:3, :3].T) - np.ones((1, 3)) * view[:3, -1:].T) @ np.linalg.inv(view.T[:3, :3])
-    print(f'normed mesh: {mesh_3d_points}')
+    print(f'normed mesh: {normalized_landmarks_3d}')
+    print(f'all mesh: {mesh_3d_points}')
     # normalized_landmarks_3d = normalized_landmarks_3d[:, :3]
 
     return normalized_landmarks_3d, a, Ind

@@ -16,7 +16,7 @@ import os
 
 parser = argparse.ArgumentParser(description='extract keypoints from image')
 
-parser.add_argument('--source_path', default='./datasample/Amir.jpg', help='input sequence path')
+parser.add_argument('--source_path', default='./dataSample/Amir.jpg', help='input sequence path')
 parser.add_argument('--out_dir', default='./results/', help='FLAME meshes output path')
 
 args = parser.parse_args()
@@ -43,7 +43,7 @@ H, W = im.shape[:2]
 # print(f'bb: {bb}')
 # print(f'coords: {coords}')
 # (vertices, mesh_plotting, Ind, rotation_angle) = helpers.landmarks_3d_fitting(coords, H, W)
-
+coords[:, 1] = H - coords[:, 1]
 vertices, a, Ind = helpers.normalize_mesh(coords, H, W)
 
 
@@ -55,8 +55,10 @@ vertices, a, Ind = helpers.normalize_mesh(coords, H, W)
 
 # vertices[-51:] = vertices_rhs
 coords_3d = np.concatenate([vertices, np.ones((len(vertices), 1))], axis=1) @ a
+coords_3d_plot = coords_3d.copy()
+coords_3d_plot[:, 1] = - coords_3d_plot[:, 1]
 # print(f'final coords: {coords}')
-coords = coords_3d[:, :2].astype(int) + np.array([[W // 2, H // 2]])
+coords = coords_3d_plot[:, :2].astype(int) + np.array([[W // 2, H // 2]])
 
 #np.savetxt('landmark_result_Yu.txt', coords)
 
